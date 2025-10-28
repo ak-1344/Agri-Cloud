@@ -1,63 +1,57 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { CompanyLayout } from "@/components/company/layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Search, Filter } from "lucide-react"
+import { apiGet, apiPost } from "@/lib/api"
+import { useAuth } from "@/lib/auth-context"
 
-interface Listing {
-  id: string
-  farmerName: string
-  crop: string
+interface ApiListing {
+  _id: string
+  cropName: string
   quantity: number
   unit: string
   pricePerUnit: number
-  location: string
-  quality: string
+  qualityGrade?: string
+  harvestDate?: string
+  farmerId?: { name?: string; location?: { district?: string; state?: string } }
 }
 
 export default function MarketplacePage() {
+  const { user } = useAuth()
   const [searchTerm, setSearchTerm] = useState("")
-  const [listings] = useState<Listing[]>([
-    {
-      id: "1",
-      farmerName: "Green Valley Farm",
-      crop: "Tomatoes",
-      quantity: 100,
-      unit: "kg",
-      pricePerUnit: 25,
-      location: "California",
-      quality: "Premium",
-    },
-    {
-      id: "2",
-      farmerName: "Sunny Acres",
-      crop: "Lettuce",
-      quantity: 50,
-      unit: "kg",
-      pricePerUnit: 15,
-      location: "Oregon",
-      quality: "Standard",
-    },
-    {
-      id: "3",
-      farmerName: "Fresh Harvest",
-      crop: "Carrots",
-      quantity: 200,
-      unit: "kg",
-      pricePerUnit: 12,
-      location: "Washington",
-      quality: "Premium",
-    },
-  ])
+  const [listings, setListings] = useState<ApiListing[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const filteredListings = listings.filter(
-    (listing) =>
-      listing.crop.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      listing.farmerName.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const data = await apiGet<ApiListing[]>("/api/listings")
+        if (mounted) setListings(data)
+      } catch (e: any) {
+        setError(e?.message || "Failed to load listings")
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const filtered = useMemo(() => {
+    const term = searchTerm.toLowerCase()
+    return listings.filter((l) => {
+      const crop = l.cropName?.toLowerCase() || ""
+      const farmer = (l.farmerId?.name || "").toLowerCase()
+      return crop.includes(term) || farmer.includes(term)
+    })
+  }, [listings, searchTerm])
 
   return (
     <CompanyLayout>
@@ -83,43 +77,71 @@ export default function MarketplacePage() {
           </Button>
         </div>
 
+        {loading && <div className="text-sm text-muted-foreground">Loading listings...</div>}
+        {error && <div className="text-sm text-destructive">{error}</div>}
+
         <div className="grid gap-4">
-          {filteredListings.map((listing) => (
-            <Card key={listing.id}>
-              <CardContent className="pt-6">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h3 className="font-semibold text-lg">{listing.crop}</h3>
-                      <span className="text-xs bg-accent/20 text-accent px-2 py-1 rounded">{listing.quality}</span>
+          {filtered.map((l) => {
+            const farmerName = l.farmerId?.name || "Farmer"
+            const location = [l.farmerId?.location?.district, l.farmerId?.location?.state]
+              .filter(Boolean)
+              .join(", ")
+            return (
+              <Card key={l._id}>
+                <CardContent className="pt-6">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="font-semibold text-lg">{l.cropName}</h3>
+                        {l.qualityGrade && (
+                          <span className="text-xs bg-accent/20 text-accent px-2 py-1 rounded">{l.qualityGrade}</span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-4">{farmerName}</p>
+                      <div className="grid grid-cols-4 gap-4">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Available</p>
+                          <p className="font-semibold">
+                            {l.quantity} {l.unit}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Price per Unit</p>
+                          <p className="font-semibold">${l.pricePerUnit}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Location</p>
+                          <p className="font-semibold">{location || "-"}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Total Value</p>
+                          <p className="font-semibold text-accent">${l.quantity * l.pricePerUnit}</p>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-sm text-muted-foreground mb-4">{listing.farmerName}</p>
-                    <div className="grid grid-cols-4 gap-4">
-                      <div>
-                        <p className="text-xs text-muted-foreground">Available</p>
-                        <p className="font-semibold">
-                          {listing.quantity} {listing.unit}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Price per Unit</p>
-                        <p className="font-semibold">${listing.pricePerUnit}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Location</p>
-                        <p className="font-semibold">{listing.location}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Total Value</p>
-                        <p className="font-semibold text-accent">${listing.quantity * listing.pricePerUnit}</p>
-                      </div>
-                    </div>
+                    <Button className="gap-2" onClick={async () => {
+                      const amountStr = window.prompt("Bid amount per unit")
+                      const qtyStr = window.prompt("Quantity")
+                      const bidAmount = Number(amountStr)
+                      const quantity = Number(qtyStr)
+                      if (!user?.id || !bidAmount || !quantity) return
+                      try {
+                        await apiPost("/api/bids", {
+                          listingId: l._id,
+                          companyId: user.id,
+                          bidAmount,
+                          quantity,
+                        })
+                        alert("Bid placed")
+                      } catch (e: any) {
+                        alert(e?.message || "Failed to place bid")
+                      }
+                    }}>Place Bid</Button>
                   </div>
-                  <Button className="gap-2">Place Bid</Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       </div>
     </CompanyLayout>

@@ -1,26 +1,40 @@
 "use client"
 
+import { useEffect, useMemo, useState } from "react"
 import { FarmerLayout } from "@/components/farmer/layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ArrowUpRight, ArrowDownLeft } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
+import { apiGet } from "@/lib/api"
 
-interface Transaction {
-  id: string
-  type: "credit" | "debit"
+interface Txn {
+  _id: string
   amount: number
-  description: string
-  date: string
+  paymentStatus: string
+  createdAt: string
+  listingId?: { cropName?: string }
 }
 
 export default function WalletPage() {
-  const balance = 3150
-  const transactions: Transaction[] = [
-    { id: "1", type: "credit", amount: 1400, description: "Payment from Fresh Foods Inc", date: "2024-10-22" },
-    { id: "2", type: "credit", amount: 750, description: "Payment from Local Market", date: "2024-10-21" },
-    { id: "3", type: "debit", amount: 100, description: "Platform fee", date: "2024-10-20" },
-    { id: "4", type: "credit", amount: 1100, description: "Payment from Green Grocers", date: "2024-10-19" },
-  ]
+  const { user } = useAuth()
+  const [balance, setBalance] = useState(0)
+  const [txns, setTxns] = useState<Txn[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!user?.id) return
+    ;(async () => {
+      try {
+        const farmer = await apiGet<any>(`/api/farmers/${user.id}`)
+        setBalance(farmer.walletBalance || 0)
+        const t = await apiGet<Txn[]>(`/api/transactions?farmerId=${user.id}`)
+        setTxns(t)
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [user?.id])
 
   return (
     <FarmerLayout>
@@ -38,7 +52,7 @@ export default function WalletPage() {
               <Button variant="secondary" size="sm">
                 Withdraw
               </Button>
-              <Button variant="secondary" size="sm" variant="outline">
+              <Button variant="outline" size="sm">
                 Add Funds
               </Button>
             </div>
@@ -48,25 +62,25 @@ export default function WalletPage() {
         <div>
           <h3 className="text-lg font-semibold mb-4">Recent Transactions</h3>
           <div className="space-y-2">
-            {transactions.map((tx) => (
-              <Card key={tx.id}>
+            {txns.map((tx) => (
+              <Card key={tx._id}>
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-full ${tx.type === "credit" ? "bg-green-100" : "bg-red-100"}`}>
-                        {tx.type === "credit" ? (
+                      <div className={`p-2 rounded-full ${tx.paymentStatus === "completed" ? "bg-green-100" : "bg-yellow-100"}`}>
+                        {tx.paymentStatus === "completed" ? (
                           <ArrowDownLeft className="w-4 h-4 text-green-600" />
                         ) : (
-                          <ArrowUpRight className="w-4 h-4 text-red-600" />
+                          <ArrowUpRight className="w-4 h-4 text-yellow-600" />
                         )}
                       </div>
                       <div>
-                        <p className="font-medium">{tx.description}</p>
-                        <p className="text-xs text-muted-foreground">{tx.date}</p>
+                        <p className="font-medium">{tx.listingId?.cropName || "Transaction"}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(tx.createdAt).toLocaleDateString()}</p>
                       </div>
                     </div>
-                    <p className={`font-semibold ${tx.type === "credit" ? "text-green-600" : "text-red-600"}`}>
-                      {tx.type === "credit" ? "+" : "-"}${tx.amount}
+                    <p className={`font-semibold ${tx.paymentStatus === "completed" ? "text-green-600" : "text-yellow-700"}`}>
+                      +${tx.amount}
                     </p>
                   </div>
                 </CardContent>

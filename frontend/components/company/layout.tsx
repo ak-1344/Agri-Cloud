@@ -25,7 +25,6 @@ export function CompanyLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen light-animated-bg">
       <PortalNavbar portalName="Company Portal" portalColor="accent" />
-
       <div className="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 md:grid-cols-4 gap-8">
         <aside className="md:col-span-1">
           <div className="sticky top-24">

@@ -16,6 +16,7 @@ interface SignupFormProps {
 export function SignupForm({ userType }: SignupFormProps) {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
+  const [phone, setPhone] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState("")
@@ -35,7 +36,12 @@ export function SignupForm({ userType }: SignupFormProps) {
     setIsLoading(true)
 
     try {
-      await signup(email, password, name, userType)
+      if (!email && !phone) {
+        setError("Provide at least an email or a phone number")
+        setIsLoading(false)
+        return
+      }
+      await signup({ email, phone, password, name, userType })
       router.push(`/${userType}/dashboard`)
     } catch (err) {
       setError("Signup failed. Please try again.")
@@ -57,13 +63,21 @@ export function SignupForm({ userType }: SignupFormProps) {
             <Input type="text" placeholder="John Doe" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div>
-            <label className="text-sm font-medium">Email</label>
+            <label className="text-sm font-medium">Email (optional)</label>
             <Input
               type="email"
               placeholder="your@email.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              required
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium">Phone (optional)</label>
+            <Input
+              type="text"
+              placeholder="9876543210"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
             />
           </div>
           <div>

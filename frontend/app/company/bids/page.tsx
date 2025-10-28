@@ -1,75 +1,44 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { CompanyLayout } from "@/components/company/layout"
 import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Plus } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
+import { apiDelete, apiGet, apiPatch } from "@/lib/api"
 
-interface Bid {
-  id: string
-  farmerName: string
-  crop: string
-  quantity: number
-  unit: string
-  bidPrice: number
-  totalBid: number
+interface ApiBid {
+  _id: string
+  listingId: { cropName: string }
+  companyId: { companyName: string }
+  bidAmount: number
+  quantity?: number
   status: "pending" | "accepted" | "rejected"
   createdAt: string
 }
 
 export default function BidsPage() {
-  const [bids, setBids] = useState<Bid[]>([
-    {
-      id: "1",
-      farmerName: "Green Valley Farm",
-      crop: "Tomatoes",
-      quantity: 50,
-      unit: "kg",
-      bidPrice: 24,
-      totalBid: 1200,
-      status: "pending",
-      createdAt: "2024-10-22",
-    },
-    {
-      id: "2",
-      farmerName: "Sunny Acres",
-      crop: "Lettuce",
-      quantity: 30,
-      unit: "kg",
-      bidPrice: 14,
-      totalBid: 420,
-      status: "accepted",
-      createdAt: "2024-10-21",
-    },
-  ])
+  const { user } = useAuth()
+  const [bids, setBids] = useState<ApiBid[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const [showForm, setShowForm] = useState(false)
-  const [formData, setFormData] = useState({ crop: "", quantity: 0, bidPrice: 0 })
-
-  const handlePlaceBid = () => {
-    if (formData.crop && formData.quantity > 0 && formData.bidPrice > 0) {
-      const newBid: Bid = {
-        id: Math.random().toString(36).substr(2, 9),
-        farmerName: "Selected Farmer",
-        crop: formData.crop,
-        quantity: formData.quantity,
-        unit: "kg",
-        bidPrice: formData.bidPrice,
-        totalBid: formData.quantity * formData.bidPrice,
-        status: "pending",
-        createdAt: new Date().toISOString().split("T")[0],
+  useEffect(() => {
+    if (!user?.id) return
+    ;(async () => {
+      try {
+        const data = await apiGet<ApiBid[]>(`/api/bids?companyId=${user.id}`)
+        setBids(data)
+      } catch (e: any) {
+        setError(e?.message || "Failed to load bids")
+      } finally {
+        setLoading(false)
       }
-      setBids([...bids, newBid])
-      setFormData({ crop: "", quantity: 0, bidPrice: 0 })
-      setShowForm(false)
-    }
-  }
+    })()
+  }, [user?.id])
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
+  function statusClass(s: string) {
+    switch (s) {
       case "pending":
         return "bg-yellow-100 text-yellow-800"
       case "accepted":
@@ -84,98 +53,77 @@ export default function BidsPage() {
   return (
     <CompanyLayout>
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold">My Bids</h1>
-            <p className="text-muted-foreground">Manage your bids and negotiations</p>
-          </div>
-          <Button onClick={() => setShowForm(!showForm)} className="gap-2">
-            <Plus className="w-4 h-4" />
-            New Bid
-          </Button>
+        <div>
+          <h1 className="text-3xl font-bold">My Bids</h1>
+          <p className="text-muted-foreground">Manage your bids and negotiations</p>
         </div>
 
-        {showForm && (
-          <Card>
-            <CardContent className="pt-6 space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="text-sm font-medium">Crop</label>
-                  <Input
-                    placeholder="e.g., Tomatoes"
-                    value={formData.crop}
-                    onChange={(e) => setFormData({ ...formData, crop: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Quantity (kg)</label>
-                  <Input
-                    type="number"
-                    placeholder="50"
-                    value={formData.quantity}
-                    onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Bid Price per Unit</label>
-                  <Input
-                    type="number"
-                    placeholder="24"
-                    value={formData.bidPrice}
-                    onChange={(e) => setFormData({ ...formData, bidPrice: Number(e.target.value) })}
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button onClick={handlePlaceBid}>Place Bid</Button>
-                <Button variant="outline" onClick={() => setShowForm(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {loading && <div className="text-sm text-muted-foreground">Loading...</div>}
+        {error && <div className="text-sm text-destructive">{error}</div>}
 
         <div className="grid gap-4">
           {bids.map((bid) => (
-            <Card key={bid.id}>
+            <Card key={bid._id}>
               <CardContent className="pt-6">
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <h3 className="font-semibold text-lg">{bid.crop}</h3>
-                      <Badge className={getStatusColor(bid.status)}>{bid.status}</Badge>
+                      <h3 className="font-semibold text-lg">{bid.listingId?.cropName}</h3>
+                      <Badge className={statusClass(bid.status)}>{bid.status}</Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground mb-4">{bid.farmerName}</p>
+                    <p className="text-sm text-muted-foreground mb-4">{bid.companyId?.companyName}</p>
                     <div className="grid grid-cols-4 gap-4">
                       <div>
                         <p className="text-xs text-muted-foreground">Quantity</p>
-                        <p className="font-semibold">
-                          {bid.quantity} {bid.unit}
-                        </p>
+                        <p className="font-semibold">{bid.quantity || "-"}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Bid Price per Unit</p>
-                        <p className="font-semibold">${bid.bidPrice}</p>
+                        <p className="font-semibold">${bid.bidAmount}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Total Bid</p>
-                        <p className="font-semibold text-accent">${bid.totalBid}</p>
+                        <p className="font-semibold text-accent">${(bid.quantity || 1) * bid.bidAmount}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Date</p>
-                        <p className="font-semibold">{bid.createdAt}</p>
+                        <p className="font-semibold">{new Date(bid.createdAt).toLocaleDateString()}</p>
                       </div>
                     </div>
                   </div>
                   {bid.status === "pending" && (
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline">
+                      <button
+                        className="text-xs underline text-muted-foreground"
+                        onClick={async () => {
+                          const amountStr = window.prompt("New bid amount", String(bid.bidAmount))
+                          const qtyStr = window.prompt("New quantity", String(bid.quantity || 0))
+                          const bidAmount = Number(amountStr)
+                          const quantity = Number(qtyStr)
+                          if (!bidAmount) return
+                          try {
+                            await apiPatch(`/api/bids/${bid._id}`, { bidAmount, quantity })
+                            setBids((prev) => prev.map((b) => (b._id === bid._id ? { ...b, bidAmount, quantity } : b)))
+                          } catch (e: any) {
+                            alert(e?.message || "Failed to update bid")
+                          }
+                        }}
+                      >
                         Edit
-                      </Button>
-                      <Button size="sm" variant="outline">
+                      </button>
+                      <button
+                        className="text-xs underline text-destructive"
+                        onClick={async () => {
+                          try {
+                            await apiDelete(`/api/bids/${bid._id}`)
+                            setBids((prev) => prev.filter((b) => b._id !== bid._id))
+                          } catch (e: any) {
+                            alert(e?.message || "Failed to cancel bid")
+                          }
+                        }}
+                      >
                         Cancel
-                      </Button>
+                      </button>
                     </div>
                   )}
                 </div>

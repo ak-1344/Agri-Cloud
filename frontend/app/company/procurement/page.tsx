@@ -1,54 +1,46 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { CompanyLayout } from "@/components/company/layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { useAuth } from "@/lib/auth-context"
+import { apiGet, apiPost } from "@/lib/api"
 
-interface ProcurementOrder {
-  id: string
-  farmerName: string
-  crop: string
-  quantity: number
-  unit: string
-  totalPrice: number
-  status: "pending" | "confirmed" | "in-transit" | "delivered"
-  deliveryDate: string
+interface Txn {
+  _id: string
+  listingId: { cropName: string }
+  farmerId: { name: string }
+  companyId: string
+  amount: number
+  paymentStatus: "initiated" | "completed" | "failed" | "refunded"
+  paymentMethod: string
+  createdAt: string
 }
 
 export default function ProcurementPage() {
-  const orders: ProcurementOrder[] = [
-    {
-      id: "1",
-      farmerName: "Green Valley Farm",
-      crop: "Tomatoes",
-      quantity: 50,
-      unit: "kg",
-      totalPrice: 1200,
-      status: "confirmed",
-      deliveryDate: "2024-10-25",
-    },
-    {
-      id: "2",
-      farmerName: "Sunny Acres",
-      crop: "Lettuce",
-      quantity: 30,
-      unit: "kg",
-      totalPrice: 420,
-      status: "in-transit",
-      deliveryDate: "2024-10-24",
-    },
-    {
-      id: "3",
-      farmerName: "Fresh Harvest",
-      crop: "Carrots",
-      quantity: 100,
-      unit: "kg",
-      totalPrice: 1200,
-      status: "delivered",
-      deliveryDate: "2024-10-22",
-    },
-  ]
+  const { user } = useAuth()
+  const [orders, setOrders] = useState<Txn[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  async function load() {
+    if (!user?.id) return
+    setLoading(true)
+    try {
+      const data = await apiGet<Txn[]>(`/api/transactions?companyId=${user.id}`)
+      setOrders(data)
+    } catch (e: any) {
+      setError(e?.message || "Failed to load transactions")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    load()
+  }, [user?.id])
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -75,39 +67,49 @@ export default function ProcurementPage() {
 
         <div className="grid gap-4">
           {orders.map((order) => (
-            <Card key={order.id}>
+            <Card key={order._id}>
               <CardContent className="pt-6">
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <h3 className="font-semibold text-lg">{order.crop}</h3>
-                      <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
+                      <h3 className="font-semibold text-lg">{order.listingId?.cropName}</h3>
+                      <Badge className={order.paymentStatus === "completed" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}>
+                        {order.paymentStatus}
+                      </Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground mb-4">{order.farmerName}</p>
+                    <p className="text-sm text-muted-foreground mb-4">{order.farmerId?.name}</p>
                     <div className="grid grid-cols-4 gap-4">
                       <div>
-                        <p className="text-xs text-muted-foreground">Quantity</p>
-                        <p className="font-semibold">
-                          {order.quantity} {order.unit}
-                        </p>
+                        <p className="text-xs text-muted-foreground">Amount</p>
+                        <p className="font-semibold text-accent">${order.amount}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-muted-foreground">Total Price</p>
-                        <p className="font-semibold text-accent">${order.totalPrice}</p>
+                        <p className="text-xs text-muted-foreground">Method</p>
+                        <p className="font-semibold">{order.paymentMethod}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-muted-foreground">Expected Delivery</p>
-                        <p className="font-semibold">{order.deliveryDate}</p>
+                        <p className="text-xs text-muted-foreground">Created</p>
+                        <p className="font-semibold">{new Date(order.createdAt).toLocaleDateString()}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-muted-foreground">Order ID</p>
-                        <p className="font-semibold text-sm">{order.id}</p>
+                        <p className="text-xs text-muted-foreground">Txn ID</p>
+                        <p className="font-semibold text-sm">{order._id}</p>
                       </div>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm">
-                    View Details
-                  </Button>
+                  {order.paymentStatus === "initiated" && (
+                    <Button variant="outline" size="sm" onClick={async () => {
+                      try {
+                        await apiPost(`/api/transactions/${order._id}/complete`, {})
+                        await load()
+                        alert("Payment completed and farmer credited")
+                      } catch (e: any) {
+                        alert(e?.message || "Payment failed")
+                      }
+                    }}>
+                      Pay Now
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>

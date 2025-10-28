@@ -1,56 +1,61 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { FarmerLayout } from "@/components/farmer/layout"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Check, X } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
+import { apiGet, apiPatch } from "@/lib/api"
 
-interface Offer {
-  id: string
-  buyerName: string
-  crop: string
-  quantity: number
-  unit: string
-  pricePerUnit: number
-  totalPrice: number
+interface ApiOffer {
+  _id: string
+  listingId: { cropName: string, unit?: string, quantity?: number }
+  companyId: { companyName: string }
+  bidAmount: number
+  quantity?: number
   status: "pending" | "accepted" | "rejected"
   createdAt: string
 }
 
 export default function OffersPage() {
-  const [offers, setOffers] = useState<Offer[]>([
-    {
-      id: "1",
-      buyerName: "Fresh Foods Inc",
-      crop: "Tomatoes",
-      quantity: 50,
-      unit: "kg",
-      pricePerUnit: 28,
-      totalPrice: 1400,
-      status: "pending",
-      createdAt: "2024-10-22",
-    },
-    {
-      id: "2",
-      buyerName: "Local Market",
-      crop: "Tomatoes",
-      quantity: 30,
-      unit: "kg",
-      pricePerUnit: 25,
-      totalPrice: 750,
-      status: "accepted",
-      createdAt: "2024-10-21",
-    },
-  ])
+  const { user } = useAuth()
+  const [offers, setOffers] = useState<ApiOffer[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleAcceptOffer = (id: string) => {
-    setOffers(offers.map((o) => (o.id === id ? { ...o, status: "accepted" } : o)))
+  useEffect(() => {
+    if (!user?.id) return
+    ;(async () => {
+      try {
+        const data = await apiGet<ApiOffer[]>(`/api/farmers/${user.id}/bids`)
+        setOffers(data)
+      } catch (e: any) {
+        setError(e?.message || "Failed to load offers")
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [user?.id])
+
+  const handleAcceptOffer = async (id: string) => {
+    try {
+      const updated = await apiPatch(`/api/bids/${id}/accept`)
+      setOffers((prev) => prev.map((o) => (o._id === id ? { ...o, status: "accepted" } as any : o)))
+      alert("Offer accepted. Transaction created.")
+    } catch (e: any) {
+      alert(e?.message || "Failed to accept offer")
+    }
   }
 
-  const handleRejectOffer = (id: string) => {
-    setOffers(offers.map((o) => (o.id === id ? { ...o, status: "rejected" } : o)))
+  const handleRejectOffer = async (id: string) => {
+    try {
+      await apiPatch(`/api/bids/${id}/reject`)
+      setOffers((prev) => prev.map((o) => (o._id === id ? { ...o, status: "rejected" } as any : o)))
+    } catch (e: any) {
+      alert(e?.message || "Failed to reject offer")
+    }
   }
 
   const getStatusColor = (status: string) => {
@@ -76,43 +81,41 @@ export default function OffersPage() {
 
         <div className="grid gap-4">
           {offers.map((offer) => (
-            <Card key={offer.id}>
+            <Card key={offer._id}>
               <CardContent className="pt-6">
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <h3 className="font-semibold text-lg">{offer.buyerName}</h3>
+                      <h3 className="font-semibold text-lg">{offer.companyId?.companyName}</h3>
                       <Badge className={getStatusColor(offer.status)}>{offer.status}</Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground mb-4">{offer.crop}</p>
+                    <p className="text-sm text-muted-foreground mb-4">{offer.listingId?.cropName}</p>
                     <div className="grid grid-cols-4 gap-4">
                       <div>
                         <p className="text-xs text-muted-foreground">Quantity</p>
-                        <p className="font-semibold">
-                          {offer.quantity} {offer.unit}
-                        </p>
+                        <p className="font-semibold">{offer.quantity || offer.listingId?.quantity}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Price per Unit</p>
-                        <p className="font-semibold">${offer.pricePerUnit}</p>
+                        <p className="font-semibold">${offer.bidAmount}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Total Price</p>
-                        <p className="font-semibold text-primary">${offer.totalPrice}</p>
+                        <p className="font-semibold text-primary">${(offer.quantity || 1) * offer.bidAmount}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Date</p>
-                        <p className="font-semibold">{offer.createdAt}</p>
+                        <p className="font-semibold">{new Date(offer.createdAt).toLocaleDateString()}</p>
                       </div>
                     </div>
                   </div>
                   {offer.status === "pending" && (
                     <div className="flex gap-2">
-                      <Button size="sm" onClick={() => handleAcceptOffer(offer.id)} className="gap-2">
+                      <Button size="sm" onClick={() => handleAcceptOffer(offer._id)} className="gap-2">
                         <Check className="w-4 h-4" />
                         Accept
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => handleRejectOffer(offer.id)} className="gap-2">
+                      <Button size="sm" variant="outline" onClick={() => handleRejectOffer(offer._id)} className="gap-2">
                         <X className="w-4 h-4" />
                         Reject
                       </Button>

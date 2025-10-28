@@ -1,53 +1,102 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { FarmerLayout } from "@/components/farmer/layout"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Plus, Trash2, Edit2 } from "lucide-react"
+import { Plus, Trash2, Edit2, Flag } from "lucide-react"
+import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
+import { useAuth } from "@/lib/auth-context"
 
-interface Listing {
-  id: string
-  crop: string
+interface ApiListing {
+  _id: string
+  cropName: string
   quantity: number
   unit: string
   pricePerUnit: number
-  description: string
-  createdAt: string
+  status: string
 }
 
 export default function ListingsPage() {
-  const [listings, setListings] = useState<Listing[]>([
-    {
-      id: "1",
-      crop: "Tomatoes",
-      quantity: 100,
-      unit: "kg",
-      pricePerUnit: 25,
-      description: "Fresh organic tomatoes",
-      createdAt: "2024-10-20",
-    },
-  ])
+  const { user } = useAuth()
+  const [listings, setListings] = useState<ApiListing[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const [showForm, setShowForm] = useState(false)
-  const [formData, setFormData] = useState({ crop: "", quantity: 0, unit: "kg", pricePerUnit: 0, description: "" })
+  const [formData, setFormData] = useState({ cropName: "", quantity: 0, unit: "kg", pricePerUnit: 0 })
 
-  const handleAddListing = () => {
-    if (formData.crop && formData.quantity > 0 && formData.pricePerUnit > 0) {
-      const newListing: Listing = {
-        id: Math.random().toString(36).substr(2, 9),
-        ...formData,
-        createdAt: new Date().toISOString().split("T")[0],
-      }
-      setListings([...listings, newListing])
-      setFormData({ crop: "", quantity: 0, unit: "kg", pricePerUnit: 0, description: "" })
-      setShowForm(false)
+  async function load() {
+    if (!user?.id) return
+    setLoading(true)
+    try {
+      const data = await apiGet<ApiListing[]>(`/api/listings?farmerId=${user.id}`)
+      setListings(data)
+    } catch (e: any) {
+      setError(e?.message || "Failed to load listings")
+    } finally {
+      setLoading(false)
     }
   }
 
-  const handleDeleteListing = (id: string) => {
-    setListings(listings.filter((l) => l.id !== id))
+  useEffect(() => {
+    load()
+  }, [user?.id])
+
+  const handleAddListing = async () => {
+    if (!formData.cropName || formData.quantity <= 0 || formData.pricePerUnit <= 0) return
+    try {
+      await apiPost<ApiListing>("/api/listings", {
+        farmerId: user?.id,
+        cropName: formData.cropName,
+        quantity: formData.quantity,
+        unit: formData.unit,
+        pricePerUnit: formData.pricePerUnit,
+        qualityGrade: "A",
+      })
+      setFormData({ cropName: "", quantity: 0, unit: "kg", pricePerUnit: 0 })
+      setShowForm(false)
+      await load()
+    } catch (e: any) {
+      setError(e?.message || "Failed to create listing")
+    }
+  }
+
+  const handleDeleteListing = async (_id: string) => {
+    try {
+      await apiDelete(`/api/listings/${_id}`)
+      setListings((prev) => prev.filter((l) => l._id !== _id))
+    } catch (e: any) {
+      alert(e?.message || "Failed to delete listing")
+    }
+  }
+
+  const handleEditListing = async (l: ApiListing) => {
+    const cropName = window.prompt("Crop name", l.cropName) || l.cropName
+    const quantity = Number(window.prompt("Quantity", String(l.quantity)) || l.quantity)
+    const unit = window.prompt("Unit (kg/quintal/ton)", l.unit) || l.unit
+    const pricePerUnit = Number(window.prompt("Price per unit", String(l.pricePerUnit)) || l.pricePerUnit)
+    try {
+      const updated = await apiPatch<ApiListing>(`/api/listings/${l._id}`, {
+        cropName,
+        quantity,
+        unit,
+        pricePerUnit,
+      })
+      setListings((prev) => prev.map((it) => (it._id === l._id ? updated : it)))
+    } catch (e: any) {
+      alert(e?.message || "Failed to update listing")
+    }
+  }
+
+  const handleMarkSold = async (_id: string) => {
+    try {
+      const res = await apiPatch(`/api/listings/${_id}/mark-sold`)
+      setListings((prev) => prev.map((it) => (it._id === _id ? { ...it, status: "pending" } : it)))
+    } catch (e: any) {
+      alert(e?.message || "Failed to mark as sold")
+    }
   }
 
   return (
@@ -75,8 +124,8 @@ export default function ListingsPage() {
                   <label className="text-sm font-medium">Crop Name</label>
                   <Input
                     placeholder="e.g., Tomatoes"
-                    value={formData.crop}
-                    onChange={(e) => setFormData({ ...formData, crop: e.target.value })}
+                    value={formData.cropName}
+                    onChange={(e) => setFormData({ ...formData, cropName: e.target.value })}
                   />
                 </div>
                 <div>
@@ -106,14 +155,7 @@ export default function ListingsPage() {
                   />
                 </div>
               </div>
-              <div>
-                <label className="text-sm font-medium">Description</label>
-                <Input
-                  placeholder="Describe your crop..."
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                />
-              </div>
+              {error && <div className="text-sm text-destructive">{error}</div>}
               <div className="flex gap-2">
                 <Button onClick={handleAddListing}>Create Listing</Button>
                 <Button variant="outline" onClick={() => setShowForm(false)}>
@@ -124,14 +166,16 @@ export default function ListingsPage() {
           </Card>
         )}
 
+        {loading && <div className="text-sm text-muted-foreground">Loading...</div>}
+        {error && !showForm && <div className="text-sm text-destructive">{error}</div>}
+
         <div className="grid gap-4">
           {listings.map((listing) => (
-            <Card key={listing.id}>
+            <Card key={listing._id}>
               <CardContent className="pt-6">
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
-                    <h3 className="font-semibold text-lg">{listing.crop}</h3>
-                    <p className="text-sm text-muted-foreground">{listing.description}</p>
+                    <h3 className="font-semibold text-lg">{listing.cropName}</h3>
                     <div className="mt-4 grid grid-cols-3 gap-4">
                       <div>
                         <p className="text-xs text-muted-foreground">Quantity</p>
@@ -150,11 +194,14 @@ export default function ListingsPage() {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" title="Edit" onClick={() => handleEditListing(listing)}>
                       <Edit2 className="w-4 h-4" />
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleDeleteListing(listing.id)}>
+                    <Button variant="outline" size="sm" title="Delete" onClick={() => handleDeleteListing(listing._id)}>
                       <Trash2 className="w-4 h-4" />
+                    </Button>
+                    <Button variant="outline" size="sm" title="Mark Sold" onClick={() => handleMarkSold(listing._id)}>
+                      <Flag className="w-4 h-4" />
                     </Button>
                   </div>
                 </div>

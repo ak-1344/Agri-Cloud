@@ -7,18 +7,19 @@ export type UserType = "farmer" | "company" | "admin" | null
 
 interface User {
   id: string
-  email: string
+  email?: string
+  phone?: string
   name: string
   userType: UserType
-  verified: boolean
+  verified?: boolean
 }
 
 interface AuthContextType {
   user: User | null
   userType: UserType
   isLoading: boolean
-  login: (email: string, password: string, userType: UserType) => Promise<void>
-  signup: (email: string, password: string, name: string, userType: UserType) => Promise<void>
+  login: (identifier: string, password: string, userType: UserType) => Promise<void>
+  signup: (args: { email?: string; phone?: string; password: string; name: string; userType: UserType }) => Promise<void>
   logout: () => void
 }
 
@@ -31,48 +32,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Check if user is logged in on mount
   useEffect(() => {
     const storedUser = localStorage.getItem("agroconnect_user")
-    if (storedUser) {
+    const storedToken = localStorage.getItem("agroconnect_token")
+    if (storedUser && storedToken) {
       try {
         setUser(JSON.parse(storedUser))
       } catch (error) {
-        console.error("Failed to parse stored user:", error)
         localStorage.removeItem("agroconnect_user")
+        localStorage.removeItem("agroconnect_token")
       }
     }
     setIsLoading(false)
   }, [])
 
-  const login = async (email: string, password: string, userType: UserType) => {
+  const login = async (identifier: string, _password: string, userType: UserType) => {
     setIsLoading(true)
     try {
-      // TODO: Replace with actual API call
-      const mockUser: User = {
-        id: Math.random().toString(36).substr(2, 9),
-        email,
-        name: email.split("@")[0],
-        userType,
-        verified: true,
-      }
-      setUser(mockUser)
-      localStorage.setItem("agroconnect_user", JSON.stringify(mockUser))
+      const { apiPost } = await import("./api")
+      const payload =
+        userType === "farmer"
+          ? { role: "farmer", phone: identifier }
+          : { role: "company", email: identifier }
+      const data = await apiPost<any>("/api/auth/demo-login", payload)
+      const u: User = { id: data.user.id, name: data.user.name, userType }
+      setUser(u)
+      localStorage.setItem("agroconnect_user", JSON.stringify(u))
+      localStorage.setItem("agroconnect_token", data.token)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const signup = async (email: string, password: string, name: string, userType: UserType) => {
+  const signup = async ({ email, phone, password: _password, name, userType }: { email?: string; phone?: string; password: string; name: string; userType: UserType }) => {
     setIsLoading(true)
     try {
-      // TODO: Replace with actual API call
-      const mockUser: User = {
-        id: Math.random().toString(36).substr(2, 9),
-        email,
-        name,
-        userType,
-        verified: false,
-      }
-      setUser(mockUser)
-      localStorage.setItem("agroconnect_user", JSON.stringify(mockUser))
+      // create or upsert demo user via backend to ensure ids exist
+      const { apiPost } = await import("./api")
+      const payload =
+        userType === "farmer"
+          ? { role: "farmer", phone }
+          : userType === "company"
+          ? { role: "company", email }
+          : { role: "company", email } // fallback for admin not supported in demo
+      const data = await apiPost<any>("/api/auth/demo-login", payload)
+      const u: User = { id: data.user.id, name: name || data.user.name, userType, email, phone }
+      setUser(u)
+      localStorage.setItem("agroconnect_user", JSON.stringify(u))
+      localStorage.setItem("agroconnect_token", data.token)
     } finally {
       setIsLoading(false)
     }

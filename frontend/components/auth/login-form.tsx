@@ -14,7 +14,7 @@ interface LoginFormProps {
 }
 
 export function LoginForm({ userType }: LoginFormProps) {
-  const [email, setEmail] = useState("")
+  const [identifier, setIdentifier] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -27,7 +27,7 @@ export function LoginForm({ userType }: LoginFormProps) {
     setIsLoading(true)
 
     try {
-      await login(email, password, userType)
+      await login(identifier, password, userType)
       router.push(`/${userType}/dashboard`)
     } catch (err) {
       setError("Login failed. Please try again.")
@@ -45,12 +45,12 @@ export function LoginForm({ userType }: LoginFormProps) {
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-sm font-medium">Email</label>
+            <label className="text-sm font-medium">{userType === "farmer" ? "Phone" : "Email"}</label>
             <Input
-              type="email"
-              placeholder="your@email.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type={userType === "farmer" ? "text" : "email"}
+              placeholder={userType === "farmer" ? "9876543210" : "your@email.com"}
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
               required
             />
           </div>
